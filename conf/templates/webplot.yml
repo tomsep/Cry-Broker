@@ -1,0 +1,6 @@
+db_path: './trading_db_(backup).sqlite'
+host: 'localhost'
+port: 21020
+cache_time_to_live: 300  # seconds
+cache_threshold: 100  # number of cached results
+recent_cutoff: 720  # minutes, how recent last event for a trader must be to be included

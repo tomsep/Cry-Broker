@@ -1,0 +1,30 @@
+key_file_path: ./apikeys.yml
+model_load_path: ./models/model.tflite
+test_orders_only: True
+
+database_path: './trading_db.sqlite'
+test_database_path: './trading_test_db.sqlite'
+
+trader_info:
+    trader_id:      '000fede6b3c7414db6e43a53e7dc2b9f'
+    cycle_time:     '30min'
+    offset:         '0min'
+    model_name:     'template_name'
+    version:        '0.0.0'
+
+pairs:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+assets:
+    - USDT
+    - BTC
+    - ETH
+    - BNB
+
+
+### Write these as strings to mitigate rounding errors!
+min_notional: '11'
+base_fund_value: '13'
+###
+
