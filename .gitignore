@@ -126,3 +126,6 @@ dmypy.json
 
 # Configs except templates
 /conf/*.yml
+/*.yml
+
+*.sqlite
