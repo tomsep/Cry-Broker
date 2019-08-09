@@ -1,4 +1,3 @@
-import os
 import logging
 import pandas as pd
 import numpy as np
@@ -10,7 +9,6 @@ from decimal import Decimal
 from copy import deepcopy
 import time
 from binance.exceptions import BinanceAPIException
-from functools import partial
 import warnings
 
 from trader.marketdata_utils import extract_states_and_labels, resample_ohlc
