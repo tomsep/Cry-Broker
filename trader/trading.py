@@ -20,7 +20,6 @@ log = logging.getLogger(__name__)
 
 
 def wait(until):
-    print('Waiting until {}'.format(until))
     while pd.to_datetime('now', utc=True) < until:
         time.sleep(0.01)
 
@@ -37,6 +36,7 @@ def get_new_target_time(offset, now):
     else:
         wait_until = rounded
     return wait_until
+
 
 def warmup_model(model):
     """ Run once to allow tensorflow to optimize its runtime """
@@ -60,16 +60,16 @@ def run_trading(client, model, pairs, assets, base_fund_value, min_notional_valu
 
         is_binance_open(client)
 
+        target_time = get_new_target_time(trader_info['offset'], pd.Timestamp('now', tz='UTC'))
+        print('Waiting until {}'.format(target_time))
+
+        # Update balance just before actual trading cycle
+        balance_update_time = target_time - pd.Timedelta('10S')
+        wait(balance_update_time)
         portf = Portfolio(account_balances(client, assets), assets)
         print('balances', portf.balances())
 
-        target_time = get_new_target_time(trader_info['offset'], pd.Timestamp('now', tz='UTC'))
-        print(target_time)
-
-        if test and input('Skip wait? [Y/n]: ') == 'Y':
-            print('Wait skipped!')
-        else:
-            wait(target_time)
+        wait(target_time)
 
         start_time = time.time()
 
