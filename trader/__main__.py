@@ -84,7 +84,6 @@ def trading_execution_handler(setts):
     except Exception as err:
         if not test_mode:
             telegram_bot.send_message(str(err))
-        telegram_bot.send_message(str(err))
         raise err
 
 if __name__ == '__main__':
