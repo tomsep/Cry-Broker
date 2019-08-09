@@ -43,8 +43,7 @@ def warmup_model(model):
     model.predict(np.ones((1, 3, 50, 3)), np.ones((1, 4)))
 
 
-def run_trading(client, model, pairs, assets, base_fund_value, min_notional_value,
-                msg_client, db_path, trader_info, test=True):
+def run_trading(client, model, pairs, assets, base_fund_value, min_notional_value, db_path, trader_info, test=True):
 
     is_binance_open(client)
 
@@ -140,11 +139,6 @@ def run_trading(client, model, pairs, assets, base_fund_value, min_notional_valu
         # Get balances after
         portf_after = Portfolio(account_balances(client, assets), assets)
         db.write_balance_after(portf_after.balances(), target_time)
-
-        # Push message
-        if not test:
-            msg_client.push('Summary', 'Total value: {} USDT \nPortfolio now {}'.
-                            format(round(portf_total_value, 2), portf_vec))
 
 
 class Portfolio:
