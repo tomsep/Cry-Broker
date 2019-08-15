@@ -71,8 +71,6 @@ def run_trading(client, model, pairs, assets, base_fund_value, min_notional_valu
 
         start_time = time.time()
 
-        db.write_balance_before(portf.balances(), target_time)
-
         start, end = get_fetch_start_end(target_time, pd.Timedelta('5min'), minutes=1500)
         data = get_market_datas_parallel(client, pairs, start, end, Client.KLINE_INTERVAL_5MINUTE)
 
@@ -82,6 +80,7 @@ def run_trading(client, model, pairs, assets, base_fund_value, min_notional_valu
 
         prices = prices_from_market_data(data, pairs)
 
+        db.write_balance_before(portf.balances(), target_time)
         db.write_decision_prices(prices, target_time)
 
         supplement_prices(prices)
