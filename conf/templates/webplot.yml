@@ -4,3 +4,8 @@ port: 21020
 cache_time_to_live: 300  # seconds
 cache_threshold: 100  # number of cached results
 recent_cutoff: 720  # minutes, how recent last event for a trader must be to be included
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: "mipass"

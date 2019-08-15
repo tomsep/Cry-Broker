@@ -18,7 +18,9 @@ def app_setup(config):
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
     app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-    cache = Cache(app.server, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': '/dev/shm/webplot',
+    cache = Cache(app.server, config={'CACHE_TYPE': 'redis', 'CACHE_REDIS_HOST': sett['redis']['host'],
+                                      'CACHE_REDIS_PORT': sett['redis']['port'],
+                                      'CACHE_REDIS_PASSWORD': sett['redis']['password'],
                                       'CACHE_THRESHOLD': sett['cache_threshold'],
                                       'CACHE_DEFAULT_TIMEOUT': sett['cache_time_to_live']})
     cache.clear()

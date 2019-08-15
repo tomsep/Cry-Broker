@@ -279,15 +279,21 @@ class DataQuery:
         ])
         return pd.read_sql(c, self.conn, params=(trader_id,), parse_dates='Time', index_col='Time')
 
+    def executed_orders(self, trader_id):
+        c = ' '.join([
+            'SELECT * FROM ExecutedOrder WHERE TraderID=? ORDER BY Time ASC'
+        ])
+        return pd.read_sql(c, self.conn, params=(trader_id,), parse_dates='Time', index_col='Time')
+
 
 def get_relative_price_changes(prices, cycle_time):
     prices_prev = prices.drop('TraderID', axis=1).astype(np.float64)
     prices_next = prices_prev.copy()
     prices_next.index = prices_next.index - pd.Timedelta(cycle_time)
 
-    relative_price_change = prices_next.divide(prices_prev, axis='columns', fill_value=None)
-    relative_price_change.fillna(1., inplace=True)
-    return relative_price_change
+    relative_price_change = prices_next.divide(prices_prev, axis='columns')
+
+    return drop_nan_rows(relative_price_change)
 
 
 def get_usdt_balances(prices, balances):
@@ -295,25 +301,25 @@ def get_usdt_balances(prices, balances):
     prices = prices.drop('TraderID', axis=1)
 
     usdt_holdings = balances[['USDT']]
-    usdt_balances = balances.multiply(prices, axis='columns', fill_value=None)
+    usdt_balances = balances.multiply(prices, axis='columns')
     usdt_balances[['USDT']] = usdt_holdings
-    # TODO: WHat if Nones?
+
+    usdt_balances = drop_nan_rows(usdt_balances)
     return usdt_balances
 
 
 def get_usdt_balances_after_period(usdt_balances_after, rel_price_change):
     usdt_holdings = usdt_balances_after[['USDT']]
-    usdt_balances_after_period = usdt_balances_after.multiply(rel_price_change, fill_value=None)
+    usdt_balances_after_period = usdt_balances_after.multiply(rel_price_change)
     usdt_balances_after_period.update(usdt_holdings)
-    return usdt_balances_after_period
+    return drop_nan_rows(usdt_balances_after_period)
 
 
 def get_portfolio_relative_changes(usdt_balances_after_period, usdt_balances_before):
-    balance_before = usdt_balances_before.sum(axis=1, skipna=False)
-    balance_after = usdt_balances_after_period.sum(axis=1, skipna=False)
-    change = balance_after.divide(balance_before, fill_value=None)
-    change.fillna(1., inplace=True)
-    return change
+    balance_before = usdt_balances_before.sum(axis=1)
+    balance_after = usdt_balances_after_period.sum(axis=1)
+    change = balance_after.divide(balance_before)
+    return drop_nan_rows(change)
 
 
 def log_cumsum(portf_relative_change):
@@ -323,14 +329,140 @@ def log_cumsum(portf_relative_change):
 
 
 def relative_uniform_portfolio(rel_price_change):
-    uniform_portf = (rel_price_change / len(rel_price_change.columns)).sum(axis=1, skipna=False).fillna(1.)
+    uniform_portf = (rel_price_change / len(rel_price_change.columns)).sum(axis=1)
     return uniform_portf
 
 
-if __name__ == '__main__':
+def drop_nan_rows(df):
+    df = df.copy()
+    if type(df) == pd.Series:
+        return df[~df.isnull()]
+    else:
+        return df[~df.isnull().any(axis=1)]
 
-    query = DataQuery('./trading_db_(backup).sqlite')
-    trader_di = '971fede6b3c7414db6e43a53e7dc2b9f'
-    res = query.balance_after(trader_di)
 
-    print(res)
+def get_trading_volume(prices, orders):
+    """ Computes trading volume as USDT (pandas series) """
+
+    # Creates mapping from pairs to symbols, e.g. BNBETH -> ETH
+    quotes = ['USDT', 'BTC', 'ETH', 'BNB']
+    pair_to_quote_map = binance_pairs_map(bases=quotes, quotes=quotes, mode='quote')
+
+    # Using loc (instead of df['colname'] to suppress SettingWithCopyWarning
+    orders = orders.loc[:, ['Symbol', 'CumulativeQuoteQty']]
+    orders['QuoteSymbol'] = orders['Symbol'].map(pair_to_quote_map)
+
+    orders = orders.join(prices)
+    orders['CumulativeUSDTQty'] = np.nan
+
+    # Use default index temporarily (0,1,2..) bc "Time" may have duplicates.
+    orders['Time'] = orders.index
+    orders.reset_index(drop=True, inplace=True)
+
+    # Compute USDT values for each quote
+    for quote in quotes:
+        df = orders[orders['QuoteSymbol'] == quote]
+
+        if quote == 'USDT':
+            df = df['CumulativeQuoteQty']
+        else:
+            df = df['CumulativeQuoteQty'] * df[quote]
+            orders.drop(quote, axis=1, inplace=True)  # Quote col not needed anymore
+
+        df.name = 'CumulativeUSDTQty'
+        orders.update(df)
+
+    # Restore time index
+    orders.set_index('Time', inplace=True)
+
+    volume = orders['CumulativeUSDTQty']
+    volume = volume.groupby(level=0).sum()
+
+    return volume
+
+
+def get_commissions(prices, orders):
+    """ Computes trading commissions as USDT (pandas series) """
+
+    comm_assets = ['USDT', 'BTC', 'ETH', 'BNB']
+    orders = orders.loc[:, ['Commission', 'CommissionAsset']]
+    orders = orders.join(prices)
+    orders['CommissionUSDT'] = np.nan
+
+    # Use default index temporarily (0,1,2..) bc "Time" may have duplicates.
+    orders['Time'] = orders.index
+    orders.reset_index(drop=True, inplace=True)
+
+    # Compute USDT values for each asset type
+    for asset in comm_assets:
+        df = orders[orders['CommissionAsset'] == asset]
+
+        if asset == 'USDT':
+            df = df['Commission']
+        else:
+            df = df['Commission'] * df[asset]
+            orders.drop(asset, axis=1, inplace=True)  # Quote col not needed anymore
+
+        df.name = 'CommissionUSDT'
+        orders.update(df)
+
+    # Restore time index
+    orders.set_index('Time', inplace=True)
+
+    comms = orders['CommissionUSDT']
+    comms = comms.groupby(level=0).sum()
+
+    return comms
+
+
+def binance_pairs_map(bases, quotes, mode='both'):
+    # Creates mapping from pairs to symbols, e.g. BNBETH -> base:BNB quote:ETH
+    pair_to_quote_map = {}
+    for base in bases:
+        for quote in quotes:
+            if mode == 'both':
+                pair_to_quote_map[base + quote] = (base, quote)
+            elif mode == 'base':
+                pair_to_quote_map[base + quote] = base
+            elif mode == 'quote':
+                pair_to_quote_map[base + quote] = quote
+            else:
+                raise ValueError('Mode must be one of [both, base, quote]!')
+
+    return pair_to_quote_map
+
+
+def get_slippage_for_usdt_quotes(prices, orders):
+    """ Slippage only for USDT quote, e.g. ETHUSDT. Values as relative values actualPrice / desiredPrice - 1"""
+
+    # Creates mapping from pairs to symbols, e.g. BNBETH -> ETH
+    quotes = ['USDT', 'BTC', 'ETH', 'BNB']
+    bases = ['BTC', 'ETH', 'BNB']
+    pair_to_base_map = binance_pairs_map(bases=bases, quotes=quotes, mode='base')
+
+    # Using loc (instead of df['colname'] to suppress SettingWithCopyWarning
+    orders = orders.loc[:, ['Symbol', 'ExecutedQty', 'CumulativeQuoteQty']]
+    orders['BaseSymbol'] = orders['Symbol'].map(pair_to_base_map)
+    orders['Slippage'] = np.nan
+    orders = orders.join(prices)
+
+    # Use default index temporarily (0,1,2..) bc "Time" may have duplicates.
+    orders['Time'] = orders.index
+    orders.reset_index(drop=True, inplace=True)
+
+    # Compute actual prices for each USDT quotes only
+    for base in bases:
+        df = orders[orders['Symbol'] == base + 'USDT']
+
+        actual_price = df['CumulativeQuoteQty'] / df['ExecutedQty']
+        slippage = actual_price / df[base].astype(np.float64)
+
+        slippage.name = 'Slippage'
+        orders.update(slippage)
+
+    # Restore time index
+    orders.set_index('Time', inplace=True)
+
+    slippage = orders['Slippage'].dropna() - 1.
+
+    return slippage
